@@ -3,6 +3,7 @@ import config from '../config.js'
 
 import UserModel from '../models/UserModel.js'
 import AttemptsModel from '../models/AttemptsModel.js'
+import BanModel from '../models/BanModel.js'
 
 const sequelize = new Sequelize(config.PG_CONNECTION_STRING , {
 	logging:false
@@ -11,9 +12,10 @@ const sequelize = new Sequelize(config.PG_CONNECTION_STRING , {
 async function postgres() {
     try {
         let db = {}
-         db.users = await UserModel(Sequelize, sequelize)
-         db.attempts = await AttemptsModel(Sequelize, sequelize)
-         
+        db.users = await UserModel(Sequelize, sequelize)
+        db.attempts = await AttemptsModel(Sequelize, sequelize)
+        db.ban_model = await BanModel(Sequelize, sequelize)
+
 
          // sessions ******************************************
 
@@ -24,18 +26,34 @@ async function postgres() {
          	}
          })
 
-        await db.attempts.belongsTo(db.users,{
+         await db.attempts.belongsTo(db.users,{
          	foreignKey:{
          		name: "user_id",
          		allowNull: false
          	}
          })
-
+         await db.users.hasMany(db.ban_model,{
+            foreignKey:{
+                name: "user_id",
+                allowNull: false
+            }
+        })
+         await db.ban_model.belongsTo(db.users,{
+            foreignKey:{
+                name: "user_id",
+                allowNull: false
+            }
+        })
          //*********************************
 
-         await sequelize.sync()
+         await sequelize.sync({force:false})
+         // await db.ban_model.destroy({
+            // where:{
+                // user_id:
+            // }
+         // })
          return db
-    } catch(e){
+     } catch(e){
         console.log("DB_ERROR: "+e)
     }
 }

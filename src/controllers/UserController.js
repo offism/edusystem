@@ -3,6 +3,9 @@ import phoneValidation from '../validations/phoneValidations.js'
 import signupValidation from '../validations/signupValidations.js'
 import codeValidation from '../validations/codeValidation.js'
 import sendSms from '../modules/sms.js'
+import pkg from 'sequelize'
+import moment from 'moment'
+const {Op}  = pkg
 class UserController{
 	static async usersCheckPhone(req,res){
 		try {
@@ -62,12 +65,25 @@ class UserController{
 			if(!user){
 				throw Error("User not found!")
 			}
-
-			let gen = rn.generator({
-				min:  100000,
-				max:  999999,
-				integer: true
+            
+			const ban = await req.postgres.ban_model.findOne({
+				where:{
+					user_id: user.dataValues.user_id,
+					expireDate: {
+						[Op.gt]: new Date()
+					}
+				}
 			})
+
+			console.log(ban)
+			
+			if(ban) throw  new Error(`You are banned untill ${moment(ban.dataValues.expireDate)}`)
+
+				let gen = rn.generator({
+					min:  100000,
+					max:  999999,
+					integer: true
+				})
 
 			await req.postgres.attempts.destroy({
 				where:{
@@ -81,7 +97,7 @@ class UserController{
             // await sendSms(data.phone , `Your code: ${attempts.dataValues.code}`)
             console.log(attempts.dataValues.code)
 
-            await res.status(200).json({
+            await res.status(201).json({
             	ok:true,
             	message:"Code successfully send",
             	id: attempts.dataValues.id
@@ -107,28 +123,56 @@ class UserController{
     		const attempt = await req.postgres.attempts.findOne({
     			where:{
     				id:validationID
+    			},
+    			include: {
+    				model: req.postgres.users,
+    				as: "user",
+    				attributes: ["user_attempts"]
     			}
     		})
+    		if(!attempt) throw new Error('Validation code is not found')
+    			console.log(attempt.dataValues.attempts , attempt.dataValues.user.dataValues.user_attempts)
 
-            if(Number(code) !== Number(attempt.dataValues.code) ){
-    	    await req.postgres.attempts.update({
-    	        attempts:attempt.dataValues.attempts + 1
-    	    	},{
-    	    		where:{
-                   id:validationID
-    	    	}
-    	    })
-            }
-console.log(attempt)
-            if(Number(attempt.dataValues.attempts) >= 3){
-            	await req.postgres.attempts.destroy({
-            		where:{
-            			id:validationID
-            		}
-            	})
-            	throw  new Error('Validation code is incorrect')
-            }
-console.log(code)
+    		if(Number(code) !== Number(attempt.dataValues.code) ){
+    			await req.postgres.attempts.update({
+    				attempts:attempt.dataValues.attempts + 1
+    			},{
+    				where:{
+    					id:validationID
+    				}
+    			})
+
+    			if(Number(attempt.dataValues.attempts) > 3){
+    				await req.postgres.attempts.destroy({
+    					where:{
+    						id:validationID
+    					}
+    				})
+    				await req.postgres.users.update({
+    					user_attempts: attempt.dataValues.user.dataValues.user_attempts + 1
+    				},{
+    					where:{
+    						user_id: attempt.dataValues.user_id
+    					}
+    				})
+
+    				if(Number(attempt.dataValues.user.dataValues.user_attempts) >= 3){
+    					await req.postgres.users.update({
+    						user_attempts: 0
+    					},{
+    						where:{
+    							user_id: attempt.dataValues.user_id
+    						}
+    					})
+    					await req.postgres.ban_model.create({
+    						user_id: attempt.DataValues.user_id,
+    						expireDate: new Date(Date.now() + 7200000)
+    					})
+    				}
+    			}
+    			throw  new Error('Validation code is incorrect')
+    		}
+
     	} catch(e) {
     		res.status(401).json({
     			ok:false,
