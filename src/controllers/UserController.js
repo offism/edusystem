@@ -65,7 +65,7 @@ class UserController{
 			if(!user){
 				throw Error("User not found!")
 			}
-            
+
 			const ban = await req.postgres.ban_model.findOne({
 				where:{
 					user_id: user.dataValues.user_id,
@@ -75,7 +75,7 @@ class UserController{
 				}
 			})
 
-			console.log(ban)
+			// console.log(ban)
 			
 			if(ban) throw  new Error(`You are banned untill ${moment(ban.dataValues.expireDate)}`)
 
@@ -112,6 +112,7 @@ class UserController{
     }
 
     static async validateCode(req,res) {
+
     	try {
 
     		let validationID = req.headers["code-validation-id"]
@@ -131,9 +132,11 @@ class UserController{
     			}
     		})
     		if(!attempt) throw new Error('Validation code is not found')
+
     			console.log(attempt.dataValues.attempts , attempt.dataValues.user.dataValues.user_attempts)
 
-    		if(Number(code) !== Number(attempt.dataValues.code) ){
+    		if(Number(code) !== Number(attempt.dataValues.code)){
+
     			await req.postgres.attempts.update({
     				attempts:attempt.dataValues.attempts + 1
     			},{
@@ -142,7 +145,7 @@ class UserController{
     				}
     			})
 
-    			if(Number(attempt.dataValues.attempts) > 3){
+    			if(Number(attempt.dataValues.attempts) > 2){
     				await req.postgres.attempts.destroy({
     					where:{
     						id:validationID
@@ -156,7 +159,7 @@ class UserController{
     					}
     				})
 
-    				if(Number(attempt.dataValues.user.dataValues.user_attempts) >= 3){
+    				if(Number(attempt.dataValues.user.dataValues.user_attempts) > 2){
     					await req.postgres.users.update({
     						user_attempts: 0
     					},{
@@ -165,7 +168,7 @@ class UserController{
     						}
     					})
     					await req.postgres.ban_model.create({
-    						user_id: attempt.DataValues.user_id,
+    						user_id: attempt.dataValues.user_id,
     						expireDate: new Date(Date.now() + 7200000)
     					})
     				}
@@ -173,13 +176,35 @@ class UserController{
     			throw  new Error('Validation code is incorrect')
     		}
 
-    	} catch(e) {
-    		res.status(401).json({
-    			ok:false,
-    			message: e+''
+//sessions
+    		await req.postgres.session_model.destroy({
+    			where:{
+    				user_id: attempt.dataValues.user_id
+    			}
     		})
-    	}
-    }
+
+            const ipAddress = req.headers["x-forwarded-for"] || req.connection.remoteAddress
+            const userAgent = req.headers["user-agent"]
+
+            if(!(ipAddress && userAgent)){
+               throw new Error("Invalid device")
+                             }
+
+            const session = await req.postgres.session_model.create({
+        		user_id: attempt.dataValues.user_id,
+        		user_agent: userAgent,
+        		ip_address: ipAddress
+        })
+
+            console.log(session)
+
+  } catch(e) {
+  	res.status(401).json({
+  		ok:false,
+  		message: e+''
+  	})
+  }
+}
 
 }
 

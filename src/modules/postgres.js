@@ -4,6 +4,7 @@ import config from '../config.js'
 import UserModel from '../models/UserModel.js'
 import AttemptsModel from '../models/AttemptsModel.js'
 import BanModel from '../models/BanModel.js'
+import SessionModel from '../models/SessionModel.js'
 
 const sequelize = new Sequelize(config.PG_CONNECTION_STRING , {
 	logging:false
@@ -15,6 +16,7 @@ async function postgres() {
         db.users = await UserModel(Sequelize, sequelize)
         db.attempts = await AttemptsModel(Sequelize, sequelize)
         db.ban_model = await BanModel(Sequelize, sequelize)
+        db.session_model = await SessionModel(Sequelize, sequelize)
 
 
          // sessions ******************************************
@@ -44,13 +46,26 @@ async function postgres() {
                 allowNull: false
             }
         })
-         //*********************************
+         await db.users.hasMany(db.session_model,{
+            foreignKey:{
+                name: "user_id",
+                allowNull: false
+            }
+        })
+         await db.session_model.belongsTo(db.users,{
+            foreignKey:{
+                name: "user_id",
+                allowNull: false
+            }
+        })
+
+         //*****************************************************
 
          await sequelize.sync({force:false})
          // await db.ban_model.destroy({
-            // where:{
-                // user_id:
-            // }
+         //    where:{
+         //        user_id:'a651908a-9969-44fb-83e4-19746f90b881'
+         //    }
          // })
          return db
      } catch(e){
